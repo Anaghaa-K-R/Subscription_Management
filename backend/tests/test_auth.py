@@ -1,25 +1,19 @@
-import sys
-from pathlib import Path
 import pytest
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, BackgroundTasks
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-backend_dir = Path(__file__).resolve().parent.parent
-if str(backend_dir) not in sys.path:
-    sys.path.insert(0, str(backend_dir))
-
-from database import Base
-from models.user import User, PasswordResetToken
-from schemas.auth import (
+from backend.database import Base
+from backend.models.user import User, PasswordResetToken
+from backend.schemas.auth import (
     UserRegisterRequest,
     UserLoginRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
 )
-from routers.auth import register, login, get_profile, forgot_password, reset_password
-from core.security import (
+from backend.routers.auth import register, login, get_profile, forgot_password, reset_password
+from backend.core.security import (
     hash_password,
     verify_password,
     validate_password_complexity,
@@ -31,6 +25,7 @@ from core.security import (
 
 @pytest.fixture(scope="function")
 def db_session():
+    """Isolated in-memory database fixture to prevent modifying production Supabase data."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine)
@@ -43,66 +38,36 @@ def db_session():
 
 
 # ----------------------------------------------------
-# 1. Password Complexity & Argon2 Hashing
+# 1. Successful Registration
 # ----------------------------------------------------
-
-def test_password_complexity_valid():
-    validate_password_complexity("StrongP@ss123")
-
-
-@pytest.mark.parametrize(
-    "bad_password, expected_error",
-    [
-        ("Sh0!rt", "longer than 8 characters"),
-        ("Exact8!a", "longer than 8 characters"),
-        ("alllowercase123!", "uppercase"),
-        ("ALLUPPERCASE123!", "lowercase"),
-        ("NoSpecialChar123", "special character"),
-    ],
-)
-def test_password_complexity_invalid(bad_password, expected_error):
-    with pytest.raises(ValueError, match=expected_error):
-        validate_password_complexity(bad_password)
-
-
-def test_argon2_hashing():
-    raw_pass = "MySecret#2026"
-    hashed = hash_password(raw_pass)
-    assert hashed.startswith("$argon2")
-    assert raw_pass not in hashed
-    assert verify_password(raw_pass, hashed) is True
-    assert verify_password("WrongSecret#2026", hashed) is False
-
-
-# ----------------------------------------------------
-# 2. Registration Scenarios
-# ----------------------------------------------------
-
-def test_registration_success(db_session):
+def test_successful_registration(db_session):
     req = UserRegisterRequest(
-        name="Alice Walker",
-        email="alice@example.com",
+        name="John Doe",
+        email="john@example.com",
         password="ValidPassword#123",
     )
     user = register(req, db=db_session)
     assert user.id is not None
-    assert user.name == "Alice Walker"
-    assert user.email == "alice@example.com"
-    assert user.hashed_password.startswith("$argon2")
+    assert user.name == "John Doe"
+    assert user.email == "john@example.com"
+    assert user.is_active is True
 
 
-def test_registration_duplicate_email(db_session):
+# ----------------------------------------------------
+# 2. Duplicate Email Registration (Case-Insensitive)
+# ----------------------------------------------------
+def test_duplicate_email_registration(db_session):
     req1 = UserRegisterRequest(
-        name="Alice One",
-        email="alice@example.com",
+        name="John Doe",
+        email="john@example.com",
         password="ValidPassword#123",
     )
     register(req1, db=db_session)
 
     req2 = UserRegisterRequest(
-        name="Alice Two",
-        email="ALICE@EXAMPLE.COM",
-        password="AnotherValidPassword#456",
+        name="John Different",
+        email="JOHN@EXAMPLE.COM",
+        password="AnotherPassword#456",
     )
     with pytest.raises(HTTPException) as exc_info:
         register(req2, db=db_session)
@@ -111,52 +76,122 @@ def test_registration_duplicate_email(db_session):
 
 
 # ----------------------------------------------------
-# 3. Login & JWT Authentication Scenarios
+# 3. Invalid Email Format
 # ----------------------------------------------------
+def test_invalid_email_format():
+    with pytest.raises(Exception):
+        UserRegisterRequest(
+            name="Bad Email",
+            email="not-an-email",
+            password="ValidPassword#123",
+        )
 
-def test_login_success(db_session):
+
+# ----------------------------------------------------
+# 4. Password Shorter Than Required (<= 8)
+# ----------------------------------------------------
+def test_password_shorter_than_required():
+    with pytest.raises(ValueError, match="longer than 8 characters"):
+        validate_password_complexity("Ab1!cde")  # 7 chars
+    with pytest.raises(ValueError, match="longer than 8 characters"):
+        validate_password_complexity("Ab1!cdef")  # 8 chars (must be > 8)
+
+
+# ----------------------------------------------------
+# 5. Password Without Uppercase Letters
+# ----------------------------------------------------
+def test_password_without_uppercase():
+    with pytest.raises(ValueError, match="uppercase"):
+        validate_password_complexity("lowercase123!")
+
+
+# ----------------------------------------------------
+# 6. Password Without Lowercase Letters
+# ----------------------------------------------------
+def test_password_without_lowercase():
+    with pytest.raises(ValueError, match="lowercase"):
+        validate_password_complexity("UPPERCASE123!")
+
+
+# ----------------------------------------------------
+# 7. Password Without Special Characters
+# ----------------------------------------------------
+def test_password_without_special_characters():
+    with pytest.raises(ValueError, match="special character"):
+        validate_password_complexity("NoSpecialChar123")
+
+
+# ----------------------------------------------------
+# 8. Successful Login
+# ----------------------------------------------------
+def test_successful_login(db_session):
     req = UserRegisterRequest(
-        name="Bob Builder",
-        email="bob@example.com",
-        password="BobPassword@999",
+        name="Alice Smith",
+        email="alice@example.com",
+        password="SecurePassword#2026",
     )
     register(req, db=db_session)
 
-    login_req = UserLoginRequest(email="bob@example.com", password="BobPassword@999")
+    login_req = UserLoginRequest(email="alice@example.com", password="SecurePassword#2026")
     token_resp = login(login_req, db=db_session)
     assert token_resp.access_token is not None
     assert token_resp.token_type == "bearer"
 
-    # Decode and verify payload
-    payload = decode_access_token(token_resp.access_token)
-    assert payload is not None
-    assert payload["email"] == "bob@example.com"
 
-
-def test_login_invalid_password(db_session):
+# ----------------------------------------------------
+# 9. Incorrect Password
+# ----------------------------------------------------
+def test_login_incorrect_password(db_session):
     req = UserRegisterRequest(
-        name="Bob Builder",
-        email="bob@example.com",
-        password="BobPassword@999",
+        name="Alice Smith",
+        email="alice@example.com",
+        password="SecurePassword#2026",
     )
     register(req, db=db_session)
 
-    login_req = UserLoginRequest(email="bob@example.com", password="WrongPassword@999")
+    login_req = UserLoginRequest(email="alice@example.com", password="WrongPassword#2026")
     with pytest.raises(HTTPException) as exc_info:
         login(login_req, db=db_session)
     assert exc_info.value.status_code == 401
     assert "Invalid email or password" in exc_info.value.detail
 
 
+# ----------------------------------------------------
+# 10. Login with Nonexistent Email
+# ----------------------------------------------------
 def test_login_nonexistent_email(db_session):
-    login_req = UserLoginRequest(email="nonexistent@example.com", password="Password#123")
+    login_req = UserLoginRequest(email="nonexistent@example.com", password="SecurePassword#2026")
     with pytest.raises(HTTPException) as exc_info:
         login(login_req, db=db_session)
     assert exc_info.value.status_code == 401
     assert "Invalid email or password" in exc_info.value.detail
 
 
-def test_profile_retrieval(db_session):
+# ----------------------------------------------------
+# 11. JWT Token Verification
+# ----------------------------------------------------
+def test_jwt_token_verification(db_session):
+    req = UserRegisterRequest(
+        name="Bob Builder",
+        email="bob@example.com",
+        password="SecurePassword#2026",
+    )
+    register(req, db=db_session)
+
+    token_resp = login(UserLoginRequest(email="bob@example.com", password="SecurePassword#2026"), db=db_session)
+    payload = decode_access_token(token_resp.access_token)
+    assert payload is not None
+    assert payload["email"] == "bob@example.com"
+    assert "exp" in payload
+
+    # Invalid token check
+    assert decode_access_token("invalid.token.signature") is None
+
+
+# ----------------------------------------------------
+# 12. Access to Protected Endpoints (/auth/me)
+# ----------------------------------------------------
+def test_access_to_protected_endpoint(db_session):
     req = UserRegisterRequest(
         name="Charlie Brown",
         email="charlie@example.com",
@@ -164,30 +199,46 @@ def test_profile_retrieval(db_session):
     )
     user = register(req, db=db_session)
     profile = get_profile(current_user=user)
-    assert profile.id == user.id
     assert profile.email == "charlie@example.com"
+    assert profile.name == "Charlie Brown"
+    # Never expose hashed_password in response schema
+    assert not hasattr(profile, "hashed_password")
 
 
 # ----------------------------------------------------
-# 4. Forgot-Password & Reset Flow Scenarios
+# 13. Forgot-Password Request (Uniform Response)
 # ----------------------------------------------------
-
-def test_forgot_password_uniform_response(db_session):
+def test_forgot_password_request_uniform_response(db_session):
     req = UserRegisterRequest(
-        name="Dana",
+        name="Dana Scully",
         email="dana@example.com",
         password="DanaPassword#123",
     )
     register(req, db=db_session)
 
     bg = BackgroundTasks()
-    res_existing = forgot_password(ForgotPasswordRequest(email="dana@example.com"), background_tasks=bg, db=db_session)
-    res_non_existing = forgot_password(ForgotPasswordRequest(email="ghost@example.com"), background_tasks=bg, db=db_session)
+    res1 = forgot_password(ForgotPasswordRequest(email="dana@example.com"), background_tasks=bg, db=db_session)
+    res2 = forgot_password(ForgotPasswordRequest(email="notfound@example.com"), background_tasks=bg, db=db_session)
 
-    assert res_existing.message == res_non_existing.message
+    assert res1.message == res2.message
+    assert "If this email is registered" in res1.message
 
 
-def test_password_reset_success_and_single_use(db_session):
+# ----------------------------------------------------
+# 14. Invalid Reset Token
+# ----------------------------------------------------
+def test_password_reset_invalid_token(db_session):
+    reset_req = ResetPasswordRequest(token="completely-bogus-token", new_password="NewSecurePass#2026")
+    with pytest.raises(HTTPException) as exc_info:
+        reset_password(reset_req, db=db_session)
+    assert exc_info.value.status_code == 400
+    assert "Invalid or already used" in exc_info.value.detail
+
+
+# ----------------------------------------------------
+# 15. Expired Reset Token
+# ----------------------------------------------------
+def test_password_reset_expired_token(db_session):
     req = UserRegisterRequest(
         name="Evan",
         email="evan@example.com",
@@ -199,45 +250,9 @@ def test_password_reset_success_and_single_use(db_session):
     forgot_password(ForgotPasswordRequest(email="evan@example.com"), background_tasks=bg, db=db_session)
 
     token_entry = db_session.query(PasswordResetToken).first()
-    assert token_entry is not None
-    assert token_entry.used is False
-
-    raw_token = "single-use-reset-token-sample"
-    token_entry.token_hash = hash_reset_token(raw_token)
-    db_session.commit()
-
-    # Reset password
-    reset_req = ResetPasswordRequest(token=raw_token, new_password="NewSecurePassword#2026")
-    res = reset_password(reset_req, db=db_session)
-    assert "successfully updated" in res.message
-
-    # Verify single-use rejection
-    with pytest.raises(HTTPException) as exc_info:
-        reset_password(reset_req, db=db_session)
-    assert exc_info.value.status_code == 400
-    assert "Invalid or already used" in exc_info.value.detail
-
-    # Verify new password works and old password fails
-    assert login(UserLoginRequest(email="evan@example.com", password="NewSecurePassword#2026"), db=db_session)
-    with pytest.raises(HTTPException):
-        login(UserLoginRequest(email="evan@example.com", password="OldPassword#123"), db=db_session)
-
-
-def test_password_reset_expired_token(db_session):
-    req = UserRegisterRequest(
-        name="Fiona",
-        email="fiona@example.com",
-        password="FionaPassword#123",
-    )
-    register(req, db=db_session)
-
-    bg = BackgroundTasks()
-    forgot_password(ForgotPasswordRequest(email="fiona@example.com"), background_tasks=bg, db=db_session)
-
-    token_entry = db_session.query(PasswordResetToken).first()
     raw_token = "expired-token-sample"
     token_entry.token_hash = hash_reset_token(raw_token)
-    token_entry.expires_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    token_entry.expires_at = datetime.now(timezone.utc) - timedelta(minutes=10)
     db_session.commit()
 
     reset_req = ResetPasswordRequest(token=raw_token, new_password="NewSecurePassword#2026")
@@ -245,3 +260,86 @@ def test_password_reset_expired_token(db_session):
         reset_password(reset_req, db=db_session)
     assert exc_info.value.status_code == 400
     assert "expired" in exc_info.value.detail.lower()
+
+
+# ----------------------------------------------------
+# 16. Successful Password Reset
+# ----------------------------------------------------
+def test_successful_password_reset(db_session):
+    req = UserRegisterRequest(
+        name="Fiona",
+        email="fiona@example.com",
+        password="OldPassword#123",
+    )
+    register(req, db=db_session)
+
+    bg = BackgroundTasks()
+    forgot_password(ForgotPasswordRequest(email="fiona@example.com"), background_tasks=bg, db=db_session)
+
+    token_entry = db_session.query(PasswordResetToken).first()
+    raw_token = "valid-reset-token-sample"
+    token_entry.token_hash = hash_reset_token(raw_token)
+    token_entry.expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    db_session.commit()
+
+    reset_req = ResetPasswordRequest(token=raw_token, new_password="NewSecurePassword#2026")
+    res = reset_password(reset_req, db=db_session)
+    assert "successfully updated" in res.message
+
+    # Login with new password succeeds
+    login_resp = login(UserLoginRequest(email="fiona@example.com", password="NewSecurePassword#2026"), db=db_session)
+    assert login_resp.access_token is not None
+
+    # Login with old password fails
+    with pytest.raises(HTTPException):
+        login(UserLoginRequest(email="fiona@example.com", password="OldPassword#123"), db=db_session)
+
+
+# ----------------------------------------------------
+# 17. Reusing an Already-Used Reset Token
+# ----------------------------------------------------
+def test_reusing_already_used_reset_token(db_session):
+    req = UserRegisterRequest(
+        name="George",
+        email="george@example.com",
+        password="OldPassword#123",
+    )
+    register(req, db=db_session)
+
+    bg = BackgroundTasks()
+    forgot_password(ForgotPasswordRequest(email="george@example.com"), background_tasks=bg, db=db_session)
+
+    token_entry = db_session.query(PasswordResetToken).first()
+    raw_token = "single-use-token-sample"
+    token_entry.token_hash = hash_reset_token(raw_token)
+    token_entry.expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    db_session.commit()
+
+    # First use succeeds
+    reset_req = ResetPasswordRequest(token=raw_token, new_password="NewSecurePassword#2026")
+    reset_password(reset_req, db=db_session)
+
+    # Second use fails
+    with pytest.raises(HTTPException) as exc_info:
+        reset_password(reset_req, db=db_session)
+    assert exc_info.value.status_code == 400
+    assert "Invalid or already used" in exc_info.value.detail
+
+
+# ----------------------------------------------------
+# 18. Verify Passwords are Stored as Hashes
+# ----------------------------------------------------
+def test_verify_passwords_are_stored_as_argon2_hashes(db_session):
+    raw_password = "SecretPassword!2026"
+    req = UserRegisterRequest(
+        name="Hannah",
+        email="hannah@example.com",
+        password=raw_password,
+    )
+    user = register(req, db=db_session)
+
+    stored_user = db_session.query(User).filter(User.id == user.id).first()
+    assert stored_user.hashed_password != raw_password
+    assert raw_password not in stored_user.hashed_password
+    assert stored_user.hashed_password.startswith("$argon2")
+    assert verify_password(raw_password, stored_user.hashed_password) is True

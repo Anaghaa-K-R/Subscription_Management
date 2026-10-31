@@ -10,7 +10,10 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import relationship
 
-from backend.database import Base
+try:
+    from backend.database import Base
+except ModuleNotFoundError:
+    from database import Base
 
 
 def utc_now():

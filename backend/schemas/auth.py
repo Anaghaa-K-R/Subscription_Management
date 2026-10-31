@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Union
 from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
-from core.security import validate_password_complexity
+try:
+    from backend.core.security import validate_password_complexity
+except ModuleNotFoundError:
+    from core.security import validate_password_complexity
 
 
 class UserRegisterRequest(BaseModel):
@@ -36,7 +40,7 @@ class TokenResponse(BaseModel):
 class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: Union[int, str]
     name: str
     email: EmailStr
     is_active: bool

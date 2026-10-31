@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers.auth import router as auth_router
+
+try:
+    from routers.auth import router as auth_router
+except ModuleNotFoundError:
+    from backend.routers.auth import router as auth_router
 
 app = FastAPI(
     title="SubscriptIQ Subscription Management API",

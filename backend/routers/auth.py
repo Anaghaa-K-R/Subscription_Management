@@ -3,27 +3,50 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from database import get_db
-from models.user import User, PasswordResetToken
-from schemas.auth import (
-    UserRegisterRequest,
-    UserLoginRequest,
-    TokenResponse,
-    UserProfileResponse,
-    ForgotPasswordRequest,
-    ResetPasswordRequest,
-    MessageResponse,
-)
-from core.security import (
-    hash_password,
-    verify_password,
-    create_access_token,
-    decode_access_token,
-    generate_reset_token,
-    hash_reset_token,
-)
-from services.email_service import send_password_reset_email
-from config import settings
+try:
+    from backend.database import get_db
+    from backend.models.user import User, PasswordResetToken
+    from backend.schemas.auth import (
+        UserRegisterRequest,
+        UserLoginRequest,
+        TokenResponse,
+        UserProfileResponse,
+        ForgotPasswordRequest,
+        ResetPasswordRequest,
+        MessageResponse,
+    )
+    from backend.core.security import (
+        hash_password,
+        verify_password,
+        create_access_token,
+        decode_access_token,
+        generate_reset_token,
+        hash_reset_token,
+    )
+    from backend.services.email_service import send_password_reset_email
+    from backend.config import settings
+except ModuleNotFoundError:
+    from database import get_db
+    from models.user import User, PasswordResetToken
+    from schemas.auth import (
+        UserRegisterRequest,
+        UserLoginRequest,
+        TokenResponse,
+        UserProfileResponse,
+        ForgotPasswordRequest,
+        ResetPasswordRequest,
+        MessageResponse,
+    )
+    from core.security import (
+        hash_password,
+        verify_password,
+        create_access_token,
+        decode_access_token,
+        generate_reset_token,
+        hash_reset_token,
+    )
+    from services.email_service import send_password_reset_email
+    from config import settings
 
 router = APIRouter()
 security_bearer = HTTPBearer(auto_error=False)
@@ -50,14 +73,23 @@ def get_current_user(
         )
 
     user_id = payload.get("sub")
-    if not user_id:
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token subject invalid",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Note: user.id in database is integer or string depending on column type, query safely
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        # Also try converting to int if user_id is numeric string
+        try:
+            int_id = int(user_id)
+            user = db.query(User).filter(User.id == int_id, User.is_active == True).first()
+        except (ValueError, TypeError):
+            pass
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -68,16 +100,17 @@ def get_current_user(
 
 
 @router.post("/register", response_model=UserProfileResponse, status_code=status.HTTP_201_CREATED)
-def register(request: UserRegisterRequest, db: Session = Depends(get_db)):
+def register(request: UserRegisterRequest, db: Session = Depends(get_db)) -> UserProfileResponse:
     """
     Registers a new user account:
     - Validates email and name.
     - Validates password complexity.
     - Hashes password using Argon2.
-    - Prevents duplicate email accounts.
+    - Prevents duplicate email accounts (case-insensitive).
+    - Returns serialized user profile (never returns hashed_password).
     """
     normalized_email = request.email.lower()
-    existing_user = db.query(User).filter(User.email == normalized_email).first()
+    existing_user = db.query(User).filter(User.email.ilike(normalized_email)).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -91,10 +124,23 @@ def register(request: UserRegisterRequest, db: Session = Depends(get_db)):
         hashed_password=hashed_pw,
         is_active=True,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    try:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return UserProfileResponse.model_validate(user)
+    except Exception as exc:
+        db.rollback()
+        # Handle database-level duplicate email race conditions safely
+        if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email already exists.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to register user due to a database error.",
+        )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -104,7 +150,7 @@ def login(request: UserLoginRequest, db: Session = Depends(get_db)):
     Generic error returned for non-existent users or bad passwords to prevent enumeration.
     """
     normalized_email = request.email.lower()
-    user = db.query(User).filter(User.email == normalized_email).first()
+    user = db.query(User).filter(User.email.ilike(normalized_email)).first()
 
     if not user or not user.is_active or not verify_password(request.password, user.hashed_password):
         raise HTTPException(
@@ -112,14 +158,14 @@ def login(request: UserLoginRequest, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    access_token = create_access_token(data={"sub": user.id, "email": user.email})
+    access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
     return TokenResponse(access_token=access_token)
 
 
 @router.get("/me", response_model=UserProfileResponse)
-def get_profile(current_user: User = Depends(get_current_user)):
-    """Returns profile information for the authenticated user."""
-    return current_user
+def get_profile(current_user: User = Depends(get_current_user)) -> UserProfileResponse:
+    """Returns profile information for the authenticated user without password hashes."""
+    return UserProfileResponse.model_validate(current_user)
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
@@ -136,30 +182,33 @@ def forgot_password(
     - Delivers reset link via background email task.
     """
     normalized_email = request.email.lower()
-    user = db.query(User).filter(User.email == normalized_email).first()
+    user = db.query(User).filter(User.email.ilike(normalized_email)).first()
 
     if user and user.is_active:
         raw_token = generate_reset_token()
         token_hash = hash_reset_token(raw_token)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.RESET_TOKEN_EXPIRE_MINUTES)
 
-        # Invalidate previous unused reset tokens for this user
-        db.query(PasswordResetToken).filter(
-            PasswordResetToken.user_id == user.id,
-            PasswordResetToken.used == False,
-        ).update({"used": True})
+        try:
+            # Invalidate previous unused reset tokens for this user
+            db.query(PasswordResetToken).filter(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used == False,
+            ).update({"used": True})
 
-        reset_entry = PasswordResetToken(
-            user_id=user.id,
-            token_hash=token_hash,
-            expires_at=expires_at,
-            used=False,
-        )
-        db.add(reset_entry)
-        db.commit()
+            reset_entry = PasswordResetToken(
+                user_id=user.id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+                used=False,
+            )
+            db.add(reset_entry)
+            db.commit()
 
-        # Dispatch email asynchronously in background
-        background_tasks.add_task(send_password_reset_email, user.email, raw_token)
+            # Dispatch email asynchronously in background
+            background_tasks.add_task(send_password_reset_email, user.email, raw_token)
+        except Exception:
+            db.rollback()
 
     return MessageResponse(
         message="If this email is registered in our system, you will receive a password reset link shortly."
@@ -205,6 +254,13 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
 
     user.hashed_password = hash_password(request.new_password)
     reset_entry.used = True
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update password.",
+        )
 
     return MessageResponse(message="Password has been successfully updated.")

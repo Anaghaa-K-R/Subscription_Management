@@ -7,16 +7,28 @@ Exports all SQLAlchemy declarative entities and status enums for SubscriptIQ:
 - AI Revenue Intelligence: RevenueLeakageAlert, BusinessHealthSnapshot
 """
 
-from backend.database import Base
-from backend.models.user import User, PasswordResetToken
-from backend.models.customer import Customer
-from backend.models.product import Product
-from backend.models.subscription import Subscription
-from backend.models.tax import TaxRule
-from backend.models.discount import Discount
-from backend.models.invoice import Invoice, InvoiceItem
-from backend.models.payment import Payment
-from backend.models.intelligence import RevenueLeakageAlert, BusinessHealthSnapshot
+try:
+    from backend.database import Base
+    from backend.models.user import User, PasswordResetToken
+    from backend.models.customer import Customer
+    from backend.models.product import Product
+    from backend.models.subscription import Subscription
+    from backend.models.tax import TaxRule
+    from backend.models.discount import Discount
+    from backend.models.invoice import Invoice, InvoiceItem
+    from backend.models.payment import Payment
+    from backend.models.intelligence import RevenueLeakageAlert, BusinessHealthSnapshot
+except ModuleNotFoundError:
+    from database import Base
+    from models.user import User, PasswordResetToken
+    from models.customer import Customer
+    from models.product import Product
+    from models.subscription import Subscription
+    from models.tax import TaxRule
+    from models.discount import Discount
+    from models.invoice import Invoice, InvoiceItem
+    from models.payment import Payment
+    from models.intelligence import RevenueLeakageAlert, BusinessHealthSnapshot
 
 # Standard Status Enums & Tuples
 CUSTOMER_STATUSES = (

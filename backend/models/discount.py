@@ -11,7 +11,10 @@ from decimal import Decimal
 from sqlalchemy import Boolean, Column, Date, DateTime, Integer, Numeric, String, func
 from sqlalchemy.orm import relationship
 
-from backend.database import Base
+try:
+    from backend.database import Base
+except ModuleNotFoundError:
+    from database import Base
 
 
 class Discount(Base):

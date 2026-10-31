@@ -1,3 +1,6 @@
-from routers.auth import router as auth_router
+try:
+    from routers.auth import router as auth_router
+except ModuleNotFoundError:
+    from backend.routers.auth import router as auth_router
 
 __all__ = ["auth_router"]
