@@ -19,6 +19,15 @@ from .invoice_calculator import (
     InvoiceCalculationResult,
     calculate_invoice,
 )
+from .invoice_pdf_service import (
+    BusinessInfo,
+    CustomerInfo,
+    InvoiceItemData,
+    TaxBreakdownItem,
+    InvoiceData,
+    generate_invoice_pdf,
+    format_currency,
+)
 
 __all__ = [
     "calculate_next_billing_date",
@@ -30,4 +39,12 @@ __all__ = [
     "LineItemCalculation",
     "InvoiceCalculationResult",
     "calculate_invoice",
+    "BusinessInfo",
+    "CustomerInfo",
+    "InvoiceItemData",
+    "TaxBreakdownItem",
+    "InvoiceData",
+    "generate_invoice_pdf",
+    "format_currency",
 ]
+
