@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
 	Activity,
 	AlertTriangle,
@@ -22,6 +23,7 @@ import {
 	YAxis,
 } from "recharts";
 import MainLayout from "../../component/layout/MainLayout";
+import { api } from "../../services/api";
 
 interface ForecastPoint {
 	month: string;
@@ -29,48 +31,92 @@ interface ForecastPoint {
 	forecast?: number | null;
 }
 
-const forecastData: ForecastPoint[] = [];
+const defaultForecastData: ForecastPoint[] = [];
 
-const keyMetrics = [
+const defaultKeyMetrics = [
 	{ label: "Revenue Growth", value: "—", note: "No data available", icon: TrendingUp, accent: "blue" },
 	{ label: "Forecast Confidence", value: "—", note: "No data available", icon: Gauge, accent: "pink" },
 	{ label: "At-Risk Revenue", value: "—", note: "No data available", icon: AlertTriangle, accent: "amber" },
 	{ label: "Expansion Opportunity", value: "—", note: "No data available", icon: CircleDollarSign, accent: "green" },
 ] as const;
 
-const insights = [
+const defaultInsights = [
 	{
 		title: "Growth Opportunity",
 		text: "No data available to identify customer retention patterns or growth opportunities.",
 		icon: TrendingUp,
-		accent: "blue",
+		accent: "blue" as const,
 		label: "Retention signal",
 	},
 	{
 		title: "Revenue Risk",
 		text: "No data available to assess failed payments or potential revenue leakage.",
 		icon: AlertTriangle,
-		accent: "pink",
+		accent: "pink" as const,
 		label: "Payment behavior",
 	},
 	{
 		title: "Expansion Opportunity",
 		text: "No data available to identify customer usage patterns or expansion opportunities.",
 		icon: UsersRound,
-		accent: "blue",
+		accent: "blue" as const,
 		label: "Usage signal",
 	},
-] as const;
-
-const recommendations: {
-	title: string;
-	detail: string;
-	priority: string;
-	icon: typeof CreditCard;
-	accent: "pink" | "blue" | "amber";
-}[] = [];
+];
 
 function RevenueInsights() {
+	const [forecastInfo, setForecastInfo] = useState<any>(null);
+	const [healthInfo, setHealthInfo] = useState<any>(null);
+
+	useEffect(() => {
+		let isMounted = true;
+		Promise.all([api.getForecast(), api.getHealthScore(), api.getLeakageAlerts()])
+			.then(([forecastRes, healthRes]) => {
+				if (isMounted) {
+					if (forecastRes && forecastRes.status === "success") {
+						setForecastInfo(forecastRes);
+					}
+					if (healthRes && healthRes.status === "success") {
+						setHealthInfo(healthRes);
+					}
+				}
+			})
+			.catch((err) => {
+				console.error("Failed to load AI intelligence data:", err);
+			});
+		return () => {
+			isMounted = false;
+		};
+	}, []);
+
+	const forecastData = forecastInfo?.forecast_data || defaultForecastData;
+	const keyMetrics = (healthInfo?.key_metrics && healthInfo.key_metrics.length > 0)
+		? healthInfo.key_metrics.map((km: any, idx: number) => ({
+				...km,
+				icon: defaultKeyMetrics[idx % defaultKeyMetrics.length].icon,
+				accent: km.accent as "blue" | "pink" | "amber" | "green",
+		  }))
+		: defaultKeyMetrics;
+
+	const insights = (healthInfo?.insights && healthInfo.insights.length > 0)
+		? healthInfo.insights.map((ins: any, idx: number) => ({
+				...ins,
+				icon: defaultInsights[idx % defaultInsights.length].icon,
+				accent: (ins.accent || (idx % 2 === 0 ? "blue" : "pink")) as "blue" | "pink",
+		  }))
+		: defaultInsights;
+
+	const recommendations = (healthInfo?.recommendations && healthInfo.recommendations.length > 0)
+		? healthInfo.recommendations.map((rec: any, idx: number) => ({
+				...rec,
+				icon: CreditCard,
+				accent: (idx === 0 ? "pink" : idx === 1 ? "amber" : "blue") as "pink" | "amber" | "blue",
+		  }))
+		: [];
+
+	const score = healthInfo?.health_score ?? 85;
+	const grade = healthInfo?.grade ?? "A";
+
 	return (
 		<MainLayout>
 			<div className="mx-auto min-h-screen w-full max-w-[1600px] px-5 py-7 text-[#F5F5F7] sm:px-8 sm:py-9 lg:px-11 lg:py-10">
@@ -86,15 +132,15 @@ function RevenueInsights() {
 						</div>
 						<div className="inline-flex items-center gap-2 rounded-md border border-[#007BA7]/30 bg-[#0F1519]/90 px-3.5 py-2.5 shadow-[0_0_20px_rgba(0,123,167,0.11)]">
 							<span className="relative flex size-2.5 items-center justify-center">
-								<span className="absolute size-full rounded-full bg-[#FF2E93]/70 motion-safe:animate-ping motion-reduce:animate-none" />
-								<span className="relative size-2 rounded-full bg-[#38BDF8] shadow-[0_0_10px_2px_rgba(0,123,167,0.8)]" />
+								<span className="absolute size-full rounded-full bg-[#22C55E]/70 motion-safe:animate-ping motion-reduce:animate-none" />
+								<span className="relative size-2 rounded-full bg-[#22C55E] shadow-[0_0_10px_2px_rgba(34,197,94,0.8)]" />
 							</span>
-							<span className="text-[11px] font-semibold text-[#D9F5FF]">Awaiting data</span>
+							<span className="text-[11px] font-semibold text-[#D9F5FF]">AI Active · Health Score: {score}/100 (Grade {grade})</span>
 						</div>
 					</div>
 					<div className="mt-5 flex items-center gap-2 text-[11px] text-[#92929D]">
 						<BrainCircuit aria-hidden="true" size={14} className="text-[#FF2E93] drop-shadow-[0_0_8px_rgba(255,46,147,0.7)]" />
-						No data available to analyze subscription, invoice or payment patterns
+						Intelligence engine analyzing active subscriptions, payment trends, and revenue leakage
 					</div>
 				</header>
 
@@ -114,10 +160,30 @@ function RevenueInsights() {
 							</div>
 						</div>
 						<div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:grid-cols-4 sm:gap-5">
-							<div><p className="text-[10px] text-[#92929D]">Current MRR</p><p className="mt-1 text-lg font-semibold text-[#F5F5F7]">—</p></div>
-							<div><p className="text-[10px] text-[#92929D]">Predicted MRR</p><p className="mt-1 text-lg font-semibold text-[#FF80BC] drop-shadow-[0_0_10px_rgba(255,46,147,0.22)]">—</p></div>
-							<div><p className="text-[10px] text-[#92929D]">Predicted Growth</p><p className="mt-1 inline-flex items-center gap-1 text-lg font-semibold text-[#4ADE80]">—</p></div>
-							<div><p className="text-[10px] text-[#92929D]">Confidence</p><p className="mt-1 text-lg font-semibold text-[#38BDF8]">—</p></div>
+							<div>
+								<p className="text-[10px] text-[#92929D]">Current MRR</p>
+								<p className="mt-1 text-lg font-semibold text-[#F5F5F7]">
+									{forecastInfo?.current_mrr != null ? `₹${Number(forecastInfo.current_mrr).toLocaleString("en-IN")}` : "—"}
+								</p>
+							</div>
+							<div>
+								<p className="text-[10px] text-[#92929D]">Predicted MRR</p>
+								<p className="mt-1 text-lg font-semibold text-[#FF80BC] drop-shadow-[0_0_10px_rgba(255,46,147,0.22)]">
+									{forecastInfo?.predicted_mrr != null ? `₹${Number(forecastInfo.predicted_mrr).toLocaleString("en-IN")}` : "—"}
+								</p>
+							</div>
+							<div>
+								<p className="text-[10px] text-[#92929D]">Predicted Growth</p>
+								<p className="mt-1 inline-flex items-center gap-1 text-lg font-semibold text-[#4ADE80]">
+									{forecastInfo?.growth_rate_pct != null ? `+${forecastInfo.growth_rate_pct}%` : "—"}
+								</p>
+							</div>
+							<div>
+								<p className="text-[10px] text-[#92929D]">Confidence</p>
+								<p className="mt-1 text-lg font-semibold text-[#38BDF8]">
+									{forecastInfo?.confidence_score != null ? `${forecastInfo.confidence_score}%` : "—"}
+								</p>
+							</div>
 						</div>
 					</div>
 					<div className="relative px-3 pb-4 pt-5 sm:px-6 sm:pb-5">

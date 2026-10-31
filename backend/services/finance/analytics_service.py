@@ -214,25 +214,56 @@ WEEKS_IN_YEAR = Decimal("52")
 MONTHS_IN_YEAR = Decimal("12")
 
 
-def _normalize_subscription(sub: Union[SubscriptionRecord, Dict[str, Any]]) -> SubscriptionRecord:
-    """Ensure subscription record is standardized."""
+def _normalize_subscription(sub: Any) -> SubscriptionRecord:
+    """Ensure subscription record is standardized from dataclass, dict, or ORM model."""
+    if isinstance(sub, SubscriptionRecord):
+        return sub
     if isinstance(sub, dict):
         return SubscriptionRecord.from_dict(sub)
-    return sub
+    return SubscriptionRecord(
+        id=getattr(sub, "id", ""),
+        customer_id=getattr(sub, "customer_id", ""),
+        unit_price=getattr(sub, "unit_price", Decimal("0.00")),
+        quantity=int(getattr(sub, "quantity", 1)),
+        billing_interval=str(getattr(sub, "billing_interval", "monthly")),
+        status=str(getattr(sub, "status", "active")),
+        discount_amount=getattr(sub, "discount_amount", Decimal("0.00")),
+        start_date=getattr(sub, "start_date", None),
+        cancellation_date=getattr(sub, "cancellation_date", None),
+    )
 
 
-def _normalize_invoice(inv: Union[InvoiceRecord, Dict[str, Any]]) -> InvoiceRecord:
-    """Ensure invoice record is standardized."""
+def _normalize_invoice(inv: Any) -> InvoiceRecord:
+    """Ensure invoice record is standardized from dataclass, dict, or ORM model."""
+    if isinstance(inv, InvoiceRecord):
+        return inv
     if isinstance(inv, dict):
         return InvoiceRecord.from_dict(inv)
-    return inv
+    return InvoiceRecord(
+        id=getattr(inv, "id", ""),
+        customer_id=getattr(inv, "customer_id", ""),
+        total_amount=getattr(inv, "total_amount", Decimal("0.00")),
+        amount_paid=getattr(inv, "amount_paid", Decimal("0.00")),
+        amount_due=getattr(inv, "amount_due", None),
+        status=str(getattr(inv, "status", "issued")),
+        issue_date=getattr(inv, "issue_date", None),
+        due_date=getattr(inv, "due_date", None),
+    )
 
 
-def _normalize_payment(pay: Union[PaymentRecord, Dict[str, Any]]) -> PaymentRecord:
-    """Ensure payment record is standardized."""
+def _normalize_payment(pay: Any) -> PaymentRecord:
+    """Ensure payment record is standardized from dataclass, dict, or ORM model."""
+    if isinstance(pay, PaymentRecord):
+        return pay
     if isinstance(pay, dict):
         return PaymentRecord.from_dict(pay)
-    return pay
+    return PaymentRecord(
+        id=getattr(pay, "id", ""),
+        amount=getattr(pay, "amount", Decimal("0.00")),
+        status=str(getattr(pay, "status", "successful")),
+        payment_date=getattr(pay, "payment_date", None),
+        payment_method=getattr(pay, "payment_method", None),
+    )
 
 
 # ==============================================================================

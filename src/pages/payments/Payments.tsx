@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	ArrowDownUp,
 	ArrowUpRight,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import MainLayout from "../../component/layout/MainLayout";
+import { api } from "../../services/api";
 
 type PaymentStatus = "Successful" | "Pending" | "Failed";
 type StatusFilter = "All payments" | PaymentStatus;
@@ -32,8 +33,6 @@ interface Payment {
 	status: PaymentStatus;
 	initials: string;
 }
-
-const payments: Payment[] = [];
 
 const statusFilters: StatusFilter[] = ["All payments", "Successful", "Pending", "Failed"];
 
@@ -66,8 +65,25 @@ const paymentStatusStyles: Record<PaymentStatus, { color: string; icon: typeof C
 };
 
 function Payments() {
+	const [payments, setPayments] = useState<Payment[]>([]);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [activeFilter, setActiveFilter] = useState<StatusFilter>("All payments");
+
+	useEffect(() => {
+		let isMounted = true;
+		api.getPayments()
+			.then((data) => {
+				if (isMounted) {
+					setPayments(data);
+				}
+			})
+			.catch((err) => {
+				console.error("Failed to load payments:", err);
+			});
+		return () => {
+			isMounted = false;
+		};
+	}, []);
 
 	const filteredPayments = payments.filter((payment) => {
 		const matchesStatus = activeFilter === "All payments" || payment.status === activeFilter;

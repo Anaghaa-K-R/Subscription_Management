@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
 	Activity,
 	AlertTriangle,
@@ -21,6 +22,7 @@ import {
 	YAxis,
 } from "recharts";
 import MainLayout from "../../component/layout/MainLayout";
+import { api } from "../../services/api";
 
 const monthlyRevenue = [
 	{ month: "Jan", revenue: 482 },
@@ -79,7 +81,14 @@ const subscriptionHealth = [
 	{ label: "Cancelled", value: "19", color: "bg-[#92929D]/50", text: "text-[#92929D]" },
 ];
 
-type KpiCardProps = (typeof kpis)[number];
+type KpiCardProps = {
+	label: string;
+	value: string;
+	change: string;
+	icon: any;
+	accent: "blue" | "pink" | "amber";
+	trend: "up" | "warning";
+};
 
 function KpiCard({ label, value, change, icon: Icon, accent, trend }: KpiCardProps) {
 	const accentStyles = {
@@ -145,6 +154,42 @@ function StatusRow({ label, value, color, text }: (typeof subscriptionHealth)[nu
 
 function Dashboard() {
 	const period = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(new Date());
+	const [analytics, setAnalytics] = useState<any>(null);
+
+	useEffect(() => {
+		let isMounted = true;
+		api.getDashboardAnalytics()
+			.then((data) => {
+				if (isMounted) {
+					setAnalytics(data);
+				}
+			})
+			.catch((err) => {
+				console.error("Failed to load dashboard analytics:", err);
+			});
+		return () => {
+			isMounted = false;
+		};
+	}, []);
+
+	// Overlay real backend KPIs
+	const displayedKpis = kpis.map((defaultKpi, idx) => {
+		if (analytics && analytics.kpis && analytics.kpis[idx]) {
+			const backendKpi = analytics.kpis[idx];
+			return {
+				...defaultKpi,
+				label: backendKpi.label || defaultKpi.label,
+				value: backendKpi.value || defaultKpi.value,
+				change: backendKpi.change || defaultKpi.change,
+				trend: (backendKpi.trend === "warning" || backendKpi.trend === "down" ? "warning" : "up") as "up" | "warning",
+			};
+		}
+		return defaultKpi;
+	});
+
+	const chartRevenue = analytics && analytics.monthlyRevenue && analytics.monthlyRevenue.length > 0
+		? analytics.monthlyRevenue
+		: monthlyRevenue;
 
 	return (
 		<MainLayout>
@@ -167,7 +212,7 @@ function Dashboard() {
 				</header>
 
 				<section aria-label="Key performance indicators" className="mb-7 grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:mb-8 xl:grid-cols-4 xl:gap-4">
-					{kpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
+					{displayedKpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
 				</section>
 
 				<section className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(300px,0.9fr)]">
@@ -175,7 +220,9 @@ function Dashboard() {
 						<div className="mb-6 flex flex-wrap items-start justify-between gap-4">
 							<div>
 								<h2 className="text-base font-semibold text-[#F5F5F7]">Revenue Overview</h2>
-								<p className="mt-1 text-xs text-[#92929D]">Recurring revenue performance</p>
+								<p className="mt-1 text-xs text-[#92929D]">
+									Recurring revenue performance {analytics?.db_mode === "local_demo" && <span className="ml-1 text-[10px] text-[#38BDF8] border border-[#007BA7]/30 px-1.5 py-0.5 rounded">Live Demo DB</span>}
+								</p>
 							</div>
 							<div className="flex items-center gap-2 text-[11px] text-[#92929D]">
 								<span className="size-1.5 rounded-full bg-[#007BA7] shadow-[0_0_8px_rgba(0,123,167,0.9)]" />
@@ -184,7 +231,7 @@ function Dashboard() {
 						</div>
 						<div className="h-[250px] w-full min-w-0 sm:h-[285px]">
 							<ResponsiveContainer width="100%" height="100%">
-								<AreaChart data={monthlyRevenue} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+								<AreaChart data={chartRevenue} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
 									<defs>
 										<linearGradient id="revenueArea" x1="0" y1="0" x2="0" y2="1">
 											<stop offset="0%" stopColor="#007BA7" stopOpacity={0.34} />

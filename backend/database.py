@@ -19,11 +19,31 @@ else:
     load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+ACTIVE_DB_MODE = "production"
 
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL is missing. Check your .env file.")
 
-engine = create_engine(DATABASE_URL)
+def _init_engine():
+    global ACTIVE_DB_MODE
+    configured_url = os.getenv("DATABASE_URL")
+    if configured_url:
+        try:
+            connect_args = {"connect_timeout": 2} if "postgres" in configured_url else {}
+            probe_engine = create_engine(configured_url, connect_args=connect_args)
+            with probe_engine.connect() as conn:
+                from sqlalchemy import text
+                conn.execute(text("SELECT 1"))
+            ACTIVE_DB_MODE = "production"
+            return probe_engine
+        except Exception as e:
+            print(f"[DATABASE NOTICE] Configured external database is unreachable: {e}")
+            print(f"[DATABASE NOTICE] Operating safely in local demo database mode (subscriptiq_local_demo.db).")
+
+    demo_path = BASE_DIR / "subscriptiq_local_demo.db"
+    ACTIVE_DB_MODE = "local_demo"
+    return create_engine(f"sqlite:///{demo_path}", connect_args={"check_same_thread": False})
+
+
+engine = _init_engine()
 
 SessionLocal = sessionmaker(
     autocommit=False,

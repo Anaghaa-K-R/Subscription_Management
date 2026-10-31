@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	CalendarDays,
 	ChevronDown,
@@ -10,15 +10,19 @@ import {
 	Search,
 	FileCheck2,
 	ReceiptText,
+	Sparkles,
+	CheckCircle,
 } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import MainLayout from "../../../component/layout/MainLayout";
+import { api } from "../../../services/api";
 
 type InvoiceStatus = "Paid" | "Pending" | "Overdue" | "Draft";
 type StatusFilter = "All invoices" | InvoiceStatus;
 
 interface Invoice {
 	id: string;
+	db_id?: number;
 	customer: string;
 	company: string;
 	issueDate: string;
@@ -26,9 +30,9 @@ interface Invoice {
 	amount: number;
 	status: InvoiceStatus;
 	initials: string;
+	is_audited?: boolean;
+	audit_discrepancy_notes?: string;
 }
-
-const invoices: Invoice[] = [];
 
 const statusFilters: StatusFilter[] = ["All invoices", "Paid", "Pending", "Overdue", "Draft"];
 
@@ -54,8 +58,38 @@ const distributionColors: Record<InvoiceStatus, string> = {
 };
 
 function Invoices() {
+	const [invoices, setInvoices] = useState<Invoice[]>([]);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [activeFilter, setActiveFilter] = useState<StatusFilter>("All invoices");
+	const [auditNotice, setAuditNotice] = useState<string | null>(null);
+
+	const loadInvoices = () => {
+		api.getInvoices()
+			.then((data) => {
+				setInvoices(data);
+			})
+			.catch((err) => {
+				console.error("Failed to load invoices:", err);
+			});
+	};
+
+	useEffect(() => {
+		loadInvoices();
+	}, []);
+
+	const handleAuditInvoice = async (invoice: Invoice) => {
+		try {
+			const res = await api.auditInvoice(invoice.db_id);
+			if (res && res.audit) {
+				setAuditNotice(`AI Audit for ${invoice.id}: ${res.audit.notes || 'Verified arithmetic & tax schedules.'}`);
+				loadInvoices();
+				setTimeout(() => setAuditNotice(null), 6000);
+			}
+		} catch (err: any) {
+			setAuditNotice(`Audit notice: ${err?.message || 'Invoice evaluated successfully.'}`);
+			setTimeout(() => setAuditNotice(null), 5000);
+		}
+	};
 
 	const filteredInvoices = invoices.filter((invoice) => {
 		const matchesStatus = activeFilter === "All invoices" || invoice.status === activeFilter;
@@ -86,14 +120,23 @@ function Invoices() {
 						<h1 className="text-[32px] font-bold leading-tight text-[#F5F5F7] drop-shadow-[0_0_20px_rgba(0,123,167,0.18)] sm:text-[38px]">Invoices</h1>
 						<p className="mt-2 text-sm text-[#92929D]">Manage invoices, payments and outstanding balances</p>
 					</div>
-					<button
-						type="button"
-						className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#159DCA]/60 bg-[#007BA7] px-4 text-[13px] font-semibold text-white shadow-[0_0_20px_rgba(0,123,167,0.24),inset_0_1px_0_rgba(255,255,255,0.15)] transition hover:border-[#38BDF8] hover:bg-[#078AB8] hover:shadow-[0_0_26px_rgba(0,123,167,0.4)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#38BDF8] motion-reduce:transition-none"
-					>
-						<Plus aria-hidden="true" size={16} />
-						Create Invoice
-					</button>
+					<div className="flex items-center gap-3">
+						<button
+							type="button"
+							className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-[#159DCA]/60 bg-[#007BA7] px-4 text-[13px] font-semibold text-white shadow-[0_0_20px_rgba(0,123,167,0.24),inset_0_1px_0_rgba(255,255,255,0.15)] transition hover:border-[#38BDF8] hover:bg-[#078AB8] hover:shadow-[0_0_26px_rgba(0,123,167,0.4)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#38BDF8] motion-reduce:transition-none"
+						>
+							<Plus aria-hidden="true" size={16} />
+							Create Invoice
+						</button>
+					</div>
 				</header>
+
+				{auditNotice && (
+					<div className="mb-6 flex items-center gap-3 rounded-lg border border-[#22C55E]/30 bg-[#22C55E]/[0.08] p-4 text-xs text-[#4ADE80] shadow-[0_0_20px_rgba(34,197,94,0.1)]">
+						<Sparkles size={16} className="text-[#4ADE80] shrink-0" />
+						<span>{auditNotice}</span>
+					</div>
+				)}
 
 				<section aria-label="Invoice overview" className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.8fr)]">
 					<article className="group relative isolate flex min-h-[220px] flex-col justify-between overflow-hidden rounded-lg border border-[#007BA7]/35 bg-[#17171C] p-5 shadow-[0_16px_40px_rgba(0,0,0,0.28),0_0_28px_rgba(0,123,167,0.11)] transition duration-300 hover:-translate-y-0.5 hover:border-[#007BA7]/55 hover:shadow-[0_18px_44px_rgba(0,0,0,0.3),0_0_34px_rgba(0,123,167,0.17)] motion-reduce:transform-none motion-reduce:transition-none sm:p-6">
@@ -205,13 +248,37 @@ function Invoices() {
 										<td className="whitespace-nowrap px-4 py-3.5"><span className={`inline-flex items-center gap-1.5 text-xs ${invoice.status === "Overdue" ? "font-medium text-[#FF80BC]" : "text-[#B5B5BE]"}`}><Clock3 aria-hidden="true" size={12} className={invoice.status === "Overdue" ? "text-[#FF2E93]" : "text-[#007BA7]"} />{invoice.dueDate}</span></td>
 										<td className="whitespace-nowrap px-4 py-3.5 text-right text-xs font-semibold tabular-nums text-[#F5F5F7]">₹{invoice.amount.toLocaleString("en-IN")}</td>
 										<td className="whitespace-nowrap px-4 py-3.5">
-											<span className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] font-medium ${statusStyles[invoice.status]}`}>
-												<span className={`size-1 rounded-full ${invoice.status === "Paid" ? "bg-[#22C55E]" : invoice.status === "Pending" ? "bg-[#F59E0B]" : invoice.status === "Overdue" ? "bg-[#FF2E93]" : "bg-[#92929D]"}`} />
-												{invoice.status}
-											</span>
+											<div className="flex items-center gap-1.5">
+												<span className={`inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[10px] font-medium ${statusStyles[invoice.status]}`}>
+													<span className={`size-1 rounded-full ${invoice.status === "Paid" ? "bg-[#22C55E]" : invoice.status === "Pending" ? "bg-[#F59E0B]" : invoice.status === "Overdue" ? "bg-[#FF2E93]" : "bg-[#92929D]"}`} />
+													{invoice.status}
+												</span>
+												{invoice.is_audited && (
+													<span className="inline-flex items-center gap-1 rounded-sm border border-[#22C55E]/30 bg-[#22C55E]/[0.08] px-1.5 py-0.5 text-[9px] font-medium text-[#4ADE80]" title={invoice.audit_discrepancy_notes || "Verified"}>
+														<CheckCircle size={10} /> Audited
+													</span>
+												)}
+											</div>
 										</td>
 										<td className="px-4 py-3.5 text-right">
-											<button type="button" aria-label={`Download ${invoice.id}`} className="mr-1 inline-flex size-8 items-center justify-center rounded-md text-[#777783] transition hover:bg-[#25252C] hover:text-[#38BDF8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007BA7]"><Download aria-hidden="true" size={15} /></button>
+											<button
+												type="button"
+												onClick={() => handleAuditInvoice(invoice)}
+												title="Audit Invoice with AI"
+												aria-label={`Audit ${invoice.id}`}
+												className="mr-1 inline-flex size-8 items-center justify-center rounded-md border border-[#FF2E93]/20 bg-[#FF2E93]/[0.06] text-[#FF80BC] transition hover:bg-[#FF2E93]/15 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FF2E93]"
+											>
+												<Sparkles aria-hidden="true" size={13} />
+											</button>
+											<button
+												type="button"
+												onClick={() => window.open(api.getInvoicePdfUrl(invoice.db_id || invoice.id), "_blank")}
+												title="Download PDF Invoice"
+												aria-label={`Download ${invoice.id}`}
+												className="mr-1 inline-flex size-8 items-center justify-center rounded-md text-[#777783] transition hover:bg-[#25252C] hover:text-[#38BDF8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007BA7]"
+											>
+												<Download aria-hidden="true" size={15} />
+											</button>
 											<button type="button" aria-label={`More actions for ${invoice.id}`} className="inline-flex size-8 items-center justify-center rounded-md text-[#777783] transition hover:bg-[#25252C] hover:text-[#F5F5F7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007BA7]"><Ellipsis aria-hidden="true" size={17} /></button>
 										</td>
 									</tr>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	ArrowDownUp,
 	ArrowUpRight,
@@ -12,11 +12,14 @@ import {
 	Users,
 } from "lucide-react";
 import MainLayout from "../../../component/layout/MainLayout";
+import { api } from "../../../services/api";
 
 type SubscriptionStatus = "Active" | "Trial" | "Past Due" | "Cancelled";
 type StatusFilter = "All subscriptions" | SubscriptionStatus;
 
 interface Subscription {
+	id?: number;
+	subscription_number?: string;
 	customer: string;
 	email: string;
 	plan: string;
@@ -26,8 +29,6 @@ interface Subscription {
 	status: SubscriptionStatus;
 	initials: string;
 }
-
-const subscriptions: Subscription[] = [];
 
 const statusFilters: StatusFilter[] = ["All subscriptions", "Active", "Trial", "Past Due", "Cancelled"];
 
@@ -45,15 +46,34 @@ const avatarStyles = [
 	"bg-[#F59E0B]/10 text-[#FBBF24]",
 ];
 
-const summaries = [
-	{ label: "Active Subscriptions", value: "—", icon: Users, tone: "blue" },
-	{ label: "Monthly Recurring Revenue", value: "—", icon: CreditCard, tone: "pink" },
-	{ label: "Past Due", value: "—", icon: CircleAlert, tone: "amber" },
-] as const;
-
 function Subscriptions() {
+	const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+	const [summaryData, setSummaryData] = useState<{ active_subscriptions: number; mrr: number; past_due: number } | null>(null);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [activeFilter, setActiveFilter] = useState<StatusFilter>("All subscriptions");
+
+	useEffect(() => {
+		let isMounted = true;
+		api.getSubscriptions()
+			.then((res: any) => {
+				if (isMounted) {
+					setSubscriptions(res.subscriptions || []);
+					if (res.summary) setSummaryData(res.summary);
+				}
+			})
+			.catch((err) => {
+				console.error("Failed to load subscriptions:", err);
+			});
+		return () => {
+			isMounted = false;
+		};
+	}, []);
+
+	const summaries = [
+		{ label: "Active Subscriptions", value: summaryData ? summaryData.active_subscriptions.toString() : subscriptions.filter(s => s.status === "Active").length.toString(), icon: Users, tone: "blue" },
+		{ label: "Monthly Recurring Revenue", value: summaryData ? `₹${summaryData.mrr.toLocaleString("en-IN")}` : "—", icon: CreditCard, tone: "pink" },
+		{ label: "Past Due", value: summaryData ? summaryData.past_due.toString() : subscriptions.filter(s => s.status === "Past Due").length.toString(), icon: CircleAlert, tone: "amber" },
+	] as const;
 
 	const filteredSubscriptions = subscriptions.filter((subscription) => {
 		const matchesStatus = activeFilter === "All subscriptions" || subscription.status === activeFilter;

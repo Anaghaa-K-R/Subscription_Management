@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
 	ArrowDownUp,
 	ChevronDown,
@@ -9,11 +9,13 @@ import {
 	UserRoundPlus,
 } from "lucide-react";
 import MainLayout from "../../../component/layout/MainLayout";
+import { api } from "../../../services/api";
 
 type CustomerStatus = "Active" | "Trial" | "At Risk";
 type StatusFilter = "All customers" | CustomerStatus;
 
 interface Customer {
+	id?: number;
 	name: string;
 	email: string;
 	company: string;
@@ -22,8 +24,6 @@ interface Customer {
 	status: CustomerStatus;
 	initials: string;
 }
-
-const customers: Customer[] = [];
 
 const statusFilters: StatusFilter[] = ["All customers", "Active", "Trial", "At Risk"];
 
@@ -41,8 +41,25 @@ const avatarStyles = [
 ];
 
 function Customers() {
+	const [customers, setCustomers] = useState<Customer[]>([]);
 	const [searchTerm, setSearchTerm] = useState("");
 	const [activeFilter, setActiveFilter] = useState<StatusFilter>("All customers");
+
+	useEffect(() => {
+		let isMounted = true;
+		api.getCustomers()
+			.then((data) => {
+				if (isMounted) {
+					setCustomers(data);
+				}
+			})
+			.catch((err) => {
+				console.error("Failed to load customers:", err);
+			});
+		return () => {
+			isMounted = false;
+		};
+	}, []);
 
 	const filteredCustomers = customers.filter((customer) => {
 		const matchesStatus = activeFilter === "All customers" || customer.status === activeFilter;
