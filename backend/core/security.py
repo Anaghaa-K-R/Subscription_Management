@@ -6,7 +6,11 @@ from typing import Optional, Dict, Any
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHashError
 import jwt
-from config import settings
+
+try:
+    from config import settings
+except ModuleNotFoundError:
+    from backend.config import settings
 
 # Argon2 hasher instance with secure default parameters
 hasher = PasswordHasher()

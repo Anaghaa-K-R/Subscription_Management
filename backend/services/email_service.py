@@ -2,7 +2,11 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from config import settings
+
+try:
+    from config import settings
+except ModuleNotFoundError:
+    from backend.config import settings
 
 logger = logging.getLogger(__name__)
 

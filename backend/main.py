@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
+<<<<<<< HEAD
     from backend.routers.auth import router as auth_router
 except ImportError:
     from routers.auth import router as auth_router
@@ -32,6 +33,11 @@ try:
     from backend.routers.operations import router as operations_router
 except ImportError:
     from routers.operations import router as operations_router
+=======
+    from routers.auth import router as auth_router
+except ModuleNotFoundError:
+    from backend.routers.auth import router as auth_router
+>>>>>>> 513bdb13da22d46561a8eb025f27f08d0ef241f5
 
 app = FastAPI(
     title="SubscriptIQ Subscription Management API",

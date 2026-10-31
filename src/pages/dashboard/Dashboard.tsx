@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { useState, useEffect } from "react";
+=======
+import { useEffect, useState } from "react";
+>>>>>>> 513bdb13da22d46561a8eb025f27f08d0ef241f5
 import {
 	Activity,
 	AlertTriangle,
@@ -21,6 +25,7 @@ import {
 	XAxis,
 	YAxis,
 } from "recharts";
+import { getBackendHealth } from "../../lib/api";
 import MainLayout from "../../component/layout/MainLayout";
 import { api } from "../../services/api";
 
@@ -154,6 +159,7 @@ function StatusRow({ label, value, color, text }: (typeof subscriptionHealth)[nu
 
 function Dashboard() {
 	const period = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(new Date());
+<<<<<<< HEAD
 	const [analytics, setAnalytics] = useState<any>(null);
 
 	useEffect(() => {
@@ -190,6 +196,37 @@ function Dashboard() {
 	const chartRevenue = analytics && analytics.monthlyRevenue && analytics.monthlyRevenue.length > 0
 		? analytics.monthlyRevenue
 		: monthlyRevenue;
+=======
+	const [backendStatus, setBackendStatus] = useState<{ isOnline: boolean; message: string }>({
+		isOnline: false,
+		message: "Checking backend connection...",
+	});
+
+	useEffect(() => {
+		let ignore = false;
+
+		const checkBackend = async () => {
+			try {
+				const data = await getBackendHealth();
+				if (!ignore) {
+					setBackendStatus({ isOnline: true, message: data.message || "Backend connected" });
+				}
+			} catch (error) {
+				if (!ignore) {
+					setBackendStatus({
+						isOnline: false,
+						message: error instanceof Error ? error.message : "Backend unavailable",
+					});
+				}
+			}
+		};
+
+		checkBackend();
+		return () => {
+			ignore = true;
+		};
+	}, []);
+>>>>>>> 513bdb13da22d46561a8eb025f27f08d0ef241f5
 
 	return (
 		<MainLayout>
@@ -205,9 +242,21 @@ function Dashboard() {
 						</h1>
 						<p className="mt-2 text-sm text-[#92929D]">Welcome back to SubscriptIQ</p>
 					</div>
-					<div className="inline-flex items-center gap-2.5 rounded-md border border-[#17171C] bg-[#111115]/90 px-3.5 py-2.5 text-xs text-[#92929D] shadow-[0_0_18px_rgba(0,123,167,0.07)]">
-						<CalendarDays aria-hidden="true" size={15} className="text-[#38BDF8]" />
-						<span className="text-[#F5F5F7]">{period}</span>
+					<div className="flex flex-col items-end gap-2">
+						<div className="inline-flex items-center gap-2.5 rounded-md border border-[#17171C] bg-[#111115]/90 px-3.5 py-2.5 text-xs text-[#92929D] shadow-[0_0_18px_rgba(0,123,167,0.07)]">
+							<CalendarDays aria-hidden="true" size={15} className="text-[#38BDF8]" />
+							<span className="text-[#F5F5F7]">{period}</span>
+						</div>
+						<div
+							className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+								backendStatus.isOnline
+									? "border-[#1F7A4D]/40 bg-[#1F7A4D]/15 text-[#9AE6B4]"
+									: "border-[#FF2E93]/40 bg-[#FF2E93]/10 text-[#FFB4D6]"
+							}`}
+						>
+							<span className={`size-2 rounded-full ${backendStatus.isOnline ? "bg-[#22C55E]" : "bg-[#FF2E93]"}`} />
+							{backendStatus.message}
+						</div>
 					</div>
 				</header>
 

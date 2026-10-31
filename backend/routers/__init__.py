@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import sys
 
 try:
@@ -13,4 +14,10 @@ except ImportError:
 
 __all__ = ["auth_router", "intelligence_router", "operations_router"]
 
+=======
+try:
+    from routers.auth import router as auth_router
+except ModuleNotFoundError:
+    from backend.routers.auth import router as auth_router
+>>>>>>> 513bdb13da22d46561a8eb025f27f08d0ef241f5
 

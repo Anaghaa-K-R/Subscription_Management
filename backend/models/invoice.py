@@ -26,7 +26,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from backend.database import Base
+try:
+    from backend.database import Base
+except ModuleNotFoundError:
+    from database import Base
 
 
 class Invoice(Base):
