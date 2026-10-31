@@ -3,3 +3,10 @@
 # Core Financial & Billing Services (Member 3)
 reportlab>=5.1.0
 pytest>=8.0.0
+
+# Module 1 - Authentication & Security (Member 2)
+alembic>=1.13.0
+pyjwt>=2.10.0
+argon2-cffi>=23.1.0
+email-validator>=2.2.0
+httpx>=0.27.0

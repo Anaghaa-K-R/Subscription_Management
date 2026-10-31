@@ -8,7 +8,7 @@ Exports all SQLAlchemy declarative entities and status enums for SubscriptIQ:
 """
 
 from backend.database import Base
-from backend.models.user import User
+from backend.models.user import User, PasswordResetToken
 from backend.models.customer import Customer
 from backend.models.product import Product
 from backend.models.subscription import Subscription
@@ -83,6 +83,7 @@ SEVERITY_LEVELS = (
 __all__ = [
     "Base",
     "User",
+    "PasswordResetToken",
     "Customer",
     "Product",
     "Subscription",
