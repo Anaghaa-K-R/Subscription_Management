@@ -51,15 +51,7 @@ class Payment(Base):
     payment_reference = Column(String(64), unique=True, index=True, nullable=False)
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="RESTRICT"), nullable=False, index=True)
 
-    # --------------------------------------------------------------------------
-    # MEMBER 2 FOREIGN KEY INTEGRATION CONTRACT:
-    # Customer model owned by Member 2.
-    # Future Foreign Key:
-    #   customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
-    # Future Relationship:
-    #   customer = relationship("Customer", back_populates="payments")
-    # --------------------------------------------------------------------------
-    customer_id = Column(Integer, nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     currency = Column(String(3), nullable=False, default="USD")
     amount = Column(Numeric(12, 2), nullable=False)
@@ -77,6 +69,7 @@ class Payment(Base):
 
     # Relationships
     invoice = relationship("Invoice", back_populates="payments")
+    customer = relationship("Customer", back_populates="payments")
 
     def __repr__(self) -> str:
         return f"<Payment(id={self.id}, ref='{self.payment_reference}', amount={self.amount}, status='{self.status}')>"

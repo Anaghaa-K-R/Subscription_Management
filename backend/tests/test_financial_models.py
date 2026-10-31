@@ -55,6 +55,10 @@ class TestFinancialModelMetadata:
         table_names = set(inspector.get_table_names())
 
         expected_tables = {
+            "users",
+            "customers",
+            "products",
+            "subscriptions",
             "tax_rules",
             "discounts",
             "invoices",

@@ -65,23 +65,8 @@ class Invoice(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     invoice_number = Column(String(64), unique=True, index=True, nullable=False)
 
-    # --------------------------------------------------------------------------
-    # MEMBER 2 FOREIGN KEY INTEGRATION CONTRACT:
-    # Customer and Subscription models are owned by Member 2.
-    # To permit independent metadata creation and migration before Member 2's
-    # models are finalized, these are indexed Integer columns with the target
-    # foreign keys documented for activation:
-    #
-    # Future Foreign Keys:
-    #   customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
-    #   subscription_id = Column(Integer, ForeignKey("subscriptions.id", ondelete="RESTRICT"), nullable=False, index=True)
-    #
-    # Future Relationships:
-    #   customer = relationship("Customer", back_populates="invoices")
-    #   subscription = relationship("Subscription", back_populates="invoices")
-    # --------------------------------------------------------------------------
-    subscription_id = Column(Integer, nullable=False, index=True)
-    customer_id = Column(Integer, nullable=False, index=True)
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id", ondelete="RESTRICT"), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     currency = Column(String(3), nullable=False, default="USD")
     billing_period_start = Column(Date, nullable=False, index=True)
@@ -128,9 +113,11 @@ class Invoice(Base):
         Index("ix_invoices_customer_status", "customer_id", "status"),
     )
 
-    # Intra-Package Relationships
+    # Intra-Package & Core Model Relationships
+    customer = relationship("Customer", back_populates="invoices")
+    subscription = relationship("Subscription", back_populates="invoices")
     items = relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
-    payments = relationship("Payment", back_populates="invoice", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="invoice")
     tax_rule = relationship("TaxRule", back_populates="invoices")
     discount = relationship("Discount", back_populates="invoices")
 
@@ -158,10 +145,7 @@ class InvoiceItem(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False, index=True)
-
-    # Future Foreign Key:
-    #   product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
-    product_id = Column(Integer, nullable=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
 
     description = Column(String(255), nullable=False)
     quantity = Column(Numeric(10, 2), nullable=False, default=Decimal("1.00"))
@@ -174,6 +158,7 @@ class InvoiceItem(Base):
 
     # Relationships
     invoice = relationship("Invoice", back_populates="items")
+    product = relationship("Product", back_populates="invoice_items")
 
     def __repr__(self) -> str:
         return f"<InvoiceItem(id={self.id}, invoice_id={self.invoice_id}, desc='{self.description}', total={self.total_price})>"
