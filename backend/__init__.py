@@ -1,0 +1,3 @@
+"""
+SubscriptIQ - Financial Services Package.
+"""
